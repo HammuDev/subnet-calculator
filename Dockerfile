@@ -1,7 +1,7 @@
 # ==========================================
 # STAGE 1: Heavy Node Environment to Build Code
 # ==========================================
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Pehle dependencies copy aur install karein (for caching efficiency)
