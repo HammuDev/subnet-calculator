@@ -3,14 +3,14 @@ name: Deploy Subnet Calculator to AWS ECS
 on:
   push:
     branches:
-      - main  # Jab bhi aap main branch par push karenge, pipeline chal paregi
+      - main
 
 env:
-  AWS_REGION: eu-north-1                  # Stockholm region code
-  ECR_REPOSITORY: subnet-calculator       # AWS ECR Repository naam
-  ECS_CLUSTER: subnet-cluster             # AWS ECS Cluster naam
-  ECS_SERVICE: subnet-service             # AWS ECS Service naam
-  ECS_TASK_DEFINITION: subnet-task        # AWS ECS Task Definition naam
+  AWS_REGION: eu-north-1                  
+  ECR_REPOSITORY: subnet-calculator       
+  ECS_CLUSTER: subnet-cluster             
+  ECS_SERVICE: subnet-service             
+  ECS_TASK_DEFINITION: subnet-task        
 
 jobs:
   deploy:
@@ -18,11 +18,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Code Checkout
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 2. AWS Registry/Services se connect karne ke liye credentials configure karna
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -30,17 +28,14 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    # 3. AWS ECR par login karna
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
-    # 4. AWS se active Task Definition family download karna
     - name: Download active Task Definition
       run: |
         aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query taskDefinition > task-definition.json
 
-    # 5. Docker Multi-Stage Build run karna aur image ECR par push karna
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
       env:
@@ -51,19 +46,18 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-    # 6. Download ki hui task-definition.json file mein naye Image Tag ko inject/update karna
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
         task-definition: task-definition.json
-        container-name: subnet-container # Ensure karein ke AWS Console me container name yahi hai
+        container-name: subnet-container 
         image: ${{ steps.build-image.outputs.image }}
 
-    # 7. Final Step: Updated Task Definition ko ECS Service par deploy karna
     - name: Deploy Amazon ECS task definition
       uses: aws-actions/amazon-ecs-deploy-task-definition@v2
       with:
         task-definition: ${{ steps.task-def.outputs.task-definition }}
         service: ${{ env.ECS_SERVICE }}
         cluster: ${{ env.ECS_CLUSTER }}
+        aws-region: ${{ env.AWS_REGION }} # <--- FIXED: Yeh explicit line cluster dhoondne me madad karegi
