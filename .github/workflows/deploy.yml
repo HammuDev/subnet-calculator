@@ -54,10 +54,13 @@ jobs:
         container-name: subnet-container 
         image: ${{ steps.build-image.outputs.image }}
 
-    - name: Deploy Amazon ECS task definition
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-      with:
-        task-definition: ${{ steps.task-def.outputs.task-definition }}
-        service: ${{ env.ECS_SERVICE }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        aws-region: ${{ env.AWS_REGION }} # <--- FIXED: Yeh explicit line cluster dhoondne me madad karegi
+    # ==========================================
+    # FIXED: Flawed action ki jagah direct AWS CLI forcing deployment
+    # ==========================================
+    - name: Register and Deploy to ECS via AWS CLI
+      run: |
+        # 1. Nayi image ke sath task definition ko register karo
+        NEW_TASK_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+        
+        # 2. Service ko enforce karo ke naye task configuration par update ho jaye
+        aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition $NEW_TASK_ARN --force-new-deployment --region ${{ env.AWS_REGION }}
