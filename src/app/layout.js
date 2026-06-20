@@ -12,8 +12,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Net Subnet Calculator",
-  description: "Net Subnet Calculator",
+  title: "Subnet Calculator",
+  description: "Subnet Calculator",
 };
 
 export default function RootLayout({ children }) {
