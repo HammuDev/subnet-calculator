@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: eu-north-1                  
   ECR_REPOSITORY: subnet-calculator       
-  ECS_CLUSTER: subnet-cluster             
+  ECS_CLUSTER: subnet-calculator             
   ECS_SERVICE: subnet-service             
   ECS_TASK_DEFINITION: subnet-task        
 
