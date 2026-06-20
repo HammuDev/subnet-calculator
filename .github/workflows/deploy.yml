@@ -3,17 +3,18 @@ name: Deploy Subnet Calculator to AWS ECS
 on:
   push:
     branches:
-      - main  # Jab bhi aap main branch par push karenge, deployment chal paregi
+      - main
 
 env:
-  AWS_REGION: eu-north-1                  # Aap ka AWS Region
-  ECR_REPOSITORY: subnet-calculator       # ECR Repo ka naam
-  ECS_CLUSTER: subnet-cluster             # ECS Cluster ka naam
-  ECS_SERVICE: subnet-service             # ECS Service ka naam
+  AWS_REGION: eu-north-1
+  ECR_REPOSITORY: subnet-calculator
+  ECS_CLUSTER: subnet-cluster
+  ECS_SERVICE: subnet-service
+  ECS_TASK_DEFINITION: subnet-task  # Aap ki task definition ka naam
 
 jobs:
   deploy:
-    name: Build and Push to ECR
+    name: Build, Push and Update ECS
     runs-on: ubuntu-latest
 
     steps:
@@ -31,13 +32,33 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
+    - name: Download active Task Definition
+      run: |
+        aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query taskDefinition > task-definition.json
+
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        # GitHub khud Docker build karega using our multi-stage Dockerfile
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: subnet-container # Jo container name aap ne task definition me rakha tha
+        image: ${{ steps.build-image.outputs.image }}
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        aws-region: ${{ env.AWS_REGION }}
+        cluster-config: null # Temporary workaround for Fargate deployments
