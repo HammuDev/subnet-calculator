@@ -7,17 +7,27 @@ import SummaryCards from '../components/SummaryCards';
 import BitVisualizer from '../components/BitVisualizer';
 import SubnetTable from '../components/SubnetTable';
 import CidrReference from '../components/CidrReference';
-import { calculateSubnetting } from '../utils/subnetCalc';
 
 export default function Home() {
   const [results, setResults] = useState(null);
   const [requestedSubnets, setRequestedSubnets] = useState(4);
 
   // Callback to calculate subnetting results in real-time
-  const handleCalculate = useCallback((ip, subnets, baseCidr) => {
-    const calcResults = calculateSubnetting(ip, subnets, baseCidr);
-    setResults(calcResults);
-    setRequestedSubnets(subnets);
+  const handleCalculate = useCallback(async (ip, subnets, baseCidr) => {
+    try {
+      const response = await fetch('/api/calculate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ip, subnets, baseCidr }),
+      });
+      const data = await response.json();
+      setResults(data);
+      setRequestedSubnets(subnets);
+    } catch (err) {
+      setResults({ error: 'Failed to connect to calculation backend.' });
+    }
   }, []);
 
   return (
