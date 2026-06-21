@@ -36,23 +36,52 @@ jobs:
       run: |
         aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query taskDefinition > task-definition.json
 
-    - name: Build, tag, and push image to Amazon ECR
+    - name: Build, tag, and push images to Amazon ECR
       id: build-image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        # Build and push Frontend
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG ./frontend
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG
+        
+        # Build and push Backend
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:backend-$IMAGE_TAG ./backend
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:backend-$IMAGE_TAG
+        
+        # Build and push Nginx
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:nginx-$IMAGE_TAG ./nginx
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:nginx-$IMAGE_TAG
+        
+        # Set outputs for rendering steps
+        echo "frontend_image=$ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "backend_image=$ECR_REGISTRY/$ECR_REPOSITORY:backend-$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "nginx_image=$ECR_REGISTRY/$ECR_REPOSITORY:nginx-$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-    - name: Fill in the new image ID in the Amazon ECS task definition
-      id: task-def
+    - name: Fill in the new Nginx image ID in the Amazon ECS task definition
+      id: task-def-nginx
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
         task-definition: task-definition.json
         container-name: subnet-container 
-        image: ${{ steps.build-image.outputs.image }}
+        image: ${{ steps.build-image.outputs.nginx_image }}
+
+    - name: Fill in the new Frontend image ID in the Amazon ECS task definition
+      id: task-def-frontend
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def-nginx.outputs.task-definition }}
+        container-name: frontend-container
+        image: ${{ steps.build-image.outputs.frontend_image }}
+
+    - name: Fill in the new Backend image ID in the Amazon ECS task definition
+      id: task-def-all
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def-frontend.outputs.task-definition }}
+        container-name: backend-container
+        image: ${{ steps.build-image.outputs.backend_image }}
 
     # ==========================================
     # FIXED: Flawed action ki jagah direct AWS CLI forcing deployment
@@ -60,7 +89,7 @@ jobs:
     - name: Register and Deploy to ECS via AWS CLI
       run: |
         # 1. Nayi image ke sath task definition ko register karo
-        NEW_TASK_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+        NEW_TASK_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def-all.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
         
         # 2. Service ko enforce karo ke naye task configuration par update ho jaye
         aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition $NEW_TASK_ARN --force-new-deployment --region ${{ env.AWS_REGION }}
