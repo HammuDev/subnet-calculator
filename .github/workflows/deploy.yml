@@ -32,9 +32,30 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Download active Task Definition
+    - name: Download active Task Definition and inject microservice containers
       run: |
-        aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query taskDefinition > task-definition.json
+        # 1. Download active task definition
+        aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query taskDefinition > active-task-def.json
+        
+        # 2. Inject frontend-container and backend-container dynamically and clean metadata
+        jq '
+          del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |
+          .containerDefinitions |= map(select(.name != "frontend-container" and .name != "backend-container")) |
+          .containerDefinitions += [
+            {
+              "name": "frontend-container",
+              "image": "placeholder-frontend",
+              "essential": true,
+              "portMappings": [{"containerPort": 3000, "hostPort": 3000, "protocol": "tcp"}]
+            },
+            {
+              "name": "backend-container",
+              "image": "placeholder-backend",
+              "essential": true,
+              "portMappings": [{"containerPort": 5000, "hostPort": 5000, "protocol": "tcp"}]
+            }
+          ]
+        ' active-task-def.json > task-definition.json
 
     - name: Build, tag, and push images to Amazon ECR
       id: build-image
